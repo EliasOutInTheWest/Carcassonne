@@ -34,7 +34,7 @@ input{font:inherit;padding:.5em;border-radius:6px;border:1px solid #6b5a3e;backg
 <div id="app"></div>
 <script>
 /* ====== SUPABASE (für Online-Modus ausfüllen, sonst nur Hotseat) ====== */
-const SB_URL='https://mogmiaxfruhovgiarbgd.supabase.co', SB_KEY='sb_publishable_lPGH5GxDIxKU9whD3FtGrA_LZx7oiXU';
+const SB_URL='https://mogmiaxfruhovgiarbgd.supabase.co', SB_KEY='sb_publishable_lPGH5GxDIxKU9whD3FtGrA_LZx7oiXUeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vZ21pYXhmcnVob3ZnaWFyYmdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM2NDgzODEsImV4cCI6MjEwOTIyNDM4MX0.b0t6yB9PQa2fLw_Bqve9tHl_r6hzi4pdzvizQxmrumQ';
 /* ====================================================================== */
 const cleanUrl=u=>{u=(u||'').trim().replace(/["'\s]/g,'');const m=u.match(/dashboard\/project\/([a-z0-9]+)/i);if(m)return 'https://'+m[1]+'.supabase.co';try{return new URL(u).origin}catch(e){return ''}};
 const sb=(SB_URL&&window.supabase)?supabase.createClient(cleanUrl(SB_URL),SB_KEY.trim()):null;
