@@ -4,7 +4,7 @@
 <title>Carcassonne Online</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏰</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Lora:wght@400;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js"></script>
 <style>
 :root{--bg:#2a2118;--panel:#3a2e21;--ink:#f3e6c4;--mute:#b9a77e;--gold:#d9a441}
 *{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.5 Lora,Georgia,serif}
@@ -20,22 +20,31 @@ input{font:inherit;padding:.5em;border-radius:6px;border:1px solid #6b5a3e;backg
 #log{font-size:13px;color:var(--mute);max-height:150px;overflow:auto}
 .box{max-width:420px;margin:8vh auto;padding:24px;background:var(--panel);border-radius:12px;display:flex;flex-direction:column;gap:12px}
 @media(max-width:700px){#app{flex-direction:column-reverse}#side{width:100%;max-height:40%;border:0}}
+.sc{font:700 22px Cinzel,serif}.ttl{font-size:46px;background:linear-gradient(#f8dd85,#c8892a);-webkit-background-clip:text;background-clip:text;color:transparent;text-align:center}
+.bgm{position:fixed;inset:0;width:100%;height:100%;filter:blur(2px) brightness(.4);z-index:-1}.box{background:#3a2e21ee;box-shadow:0 20px 50px #000a;border:1px solid #6b5a3e}
+.modal{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:9}
+.mb{background:var(--panel);border:2px solid var(--gold);border-radius:14px;padding:22px;max-width:440px;width:92%;display:flex;flex-direction:column;gap:10px;max-height:92%;overflow:auto}
+.drop{animation:dr .5s cubic-bezier(.2,.9,.3,1.3);transform-box:fill-box;transform-origin:center}@keyframes dr{from{transform:translateY(-45px) scale(1.25);opacity:0}}
+.pop{opacity:0;animation:up 2.2s ease-out both}@keyframes up{0%{opacity:0;transform:translateY(14px)}15%,75%{opacity:1}100%{opacity:0;transform:translateY(-55px)}}
+@media(prefers-reduced-motion:reduce){.drop,.pop{animation-duration:.01s}}
 </style></head><body><svg width="0" height="0" style="position:absolute"><defs><clipPath id="tc"><rect width="100" height="100" rx="3"/></clipPath>
 <linearGradient id="fg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#93c15e"/><stop offset="1" stop-color="#75a448"/></linearGradient>
 <pattern id="brk" width="14" height="9" patternUnits="userSpaceOnUse"><rect width="14" height="9" fill="#d8a85c"/><path d="M0 .4H14M0 4.9H14M3.5 .4V4.9M10.5 4.9V9.4" stroke="#a5722c" stroke-width=".8" opacity=".6" fill="none"/></pattern>
-<filter id="nz"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="2"/><feColorMatrix type="saturate" values="0"/></filter></defs></svg>
+<radialGradient id="vg"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".5"/></radialGradient><filter id="nz"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="2"/><feColorMatrix type="saturate" values="0"/></filter></defs></svg>
 <div id="app"></div>
 <script>
 /* ====== SUPABASE (für Online-Modus ausfüllen, sonst nur Hotseat) ====== */
 const SB_URL='https://mogmiaxfruhovgiarbgd.supabase.co', SB_KEY='sb_publishable_lPGH5GxDIxKU9whD3FtGrA_LZx7oiXU';
 /* ====================================================================== */
-const sb=(SB_URL&&window.supabase)?supabase.createClient(SB_URL,SB_KEY):null;
+const cleanUrl=u=>{u=(u||'').trim().replace(/["'\s]/g,'');const m=u.match(/dashboard\/project\/([a-z0-9]+)/i);if(m)return 'https://'+m[1]+'.supabase.co';try{return new URL(u).origin}catch(e){return ''}};
+const sb=(SB_URL&&window.supabase)?supabase.createClient(cleanUrl(SB_URL),SB_KEY.trim()):null;
+if(sb)console.log('Supabase URL:',cleanUrl(SB_URL));
 const COL=['#e24b4b','#3b82f6','#22c55e','#eab308','#a855f7'];
 // Kacheln: Anzahl, Kanten N,E,S,W (C=Stadt R=Straße F=Wiese), m=Kloster s=Wappen x=Städte getrennt
 const TL=[['2','FFRF','m'],['4','FFFF','m'],['1','CCCC','s'],['4','CRFR',''],['5','CFFF',''],['2','FCFC','s'],['1','CFCF',''],['3','CFCF','x'],['2','CCFF','x'],['3','CRRF',''],['3','CFRR',''],['3','CRRR',''],['2','CFFC','s'],['3','CFFC',''],['2','CRRC','s'],['3','CRRC',''],['1','CCFC','s'],['3','CCFC',''],['2','CCRC','s'],['1','CCRC',''],['8','RFRF',''],['9','FFRR',''],['4','FRRR',''],['1','RRRR','']]
 .map(a=>({n:+a[0],e:a[1],m:a[2].includes('m'),s:a[2].includes('s'),x:a[2].includes('x')}));
 const me=sessionStorage.cid||(sessionStorage.cid=Math.random().toString(36).slice(2));
-let S=null,room=null,online=false,rot=0,px=450,py=300,zm=1,moved=false,ch=null;
+let S=null,room=null,online=false,rot=0,px=450,py=300,zm=1,moved=false,ch=null,shownT=-1,shownP=-1,tips=localStorage.tips!='0',tutOn=localStorage.tut!='0';
 const $=s=>document.querySelector(s),K=(x,y,s)=>x+','+y+','+s;
 const DIR=[[0,-1],[1,0],[0,1],[-1,0]];
 function slots(c){const b=[...TL[c.t].e].map(e=>e=='C'?'CCC':e=='R'?'FRF':'FFF').join('');let r='';for(let k=0;k<12;k++)r+=b[(k-3*c.r+12)%12];return r}
@@ -62,11 +71,11 @@ if(s[i]=='F'&&s[n]=='C')C.get(f(K(x,y,i))).adj.add(f(K(x,y,n)));if(s[i]=='C'&&s[
 (M||[]).forEach(m=>{if(m.s<12)C.get(f(K(m.x,m.y,m.s))).mp.push(m)});
 return{f,C}}
 function award(S,ms,pts,why){if(!ms.length||!pts)return;const n={};ms.forEach(m=>n[m.p]=(n[m.p]||0)+1);const mx=Math.max(...Object.values(n));
-Object.keys(n).filter(p=>n[p]==mx).forEach(p=>{S.players[p].score+=pts;S.log.push(`${S.players[p].name} +${pts} (${why})`)});
+Object.keys(n).filter(p=>n[p]==mx).forEach(p=>{const pl=S.players[p];pl.score+=pts;pl.br=pl.br||{};const k=why.split(' ')[0];pl.br[k]=(pl.br[k]||0)+pts;(S.pops=S.pops||[]).push({x:ms[0].x,y:ms[0].y,pts,c:pl.color});S.log.push(`${pl.name} +${pts} (${why})`)});
 S.meeples=S.meeples.filter(m=>!ms.includes(m));ms.forEach(m=>S.players[m.p].meeples++)}
 const pay=(S,c,fin)=>award(S,c.mp,c.type=='C'?(c.tiles.size+c.sh.size)*(fin?1:2):c.tiles.size,c.type=='C'?'Stadt':'Straße');
 const monN=(B,x,y)=>{let n=0;for(let a=-1;a<2;a++)for(let b=-1;b<2;b++)if(B[(x+a)+','+(y+b)])n++;return n};
-function finish(S){const{f,C}=build(S.board,S.meeples),L=S.last,t=S.board[L.x+','+L.y],s=slots(t),R=new Set();
+function finish(S){S.pops=[];S.pv=(S.pv||0)+1;const{f,C}=build(S.board,S.meeples),L=S.last,t=S.board[L.x+','+L.y],s=slots(t),R=new Set();
 for(let i=0;i<12;i++)if(s[i]!='F')R.add(f(K(L.x,L.y,i)));R.forEach(r=>{const c=C.get(r);if(!c.open)pay(S,c,false)});
 for(let a=-1;a<2;a++)for(let b=-1;b<2;b++){const x=L.x+a,y=L.y+b,c=S.board[x+','+y];if(c&&TL[c.t].m&&monN(S.board,x,y)==9)award(S,S.meeples.filter(m=>m.x==x&&m.y==y&&m.s==12),9,'Kloster')}
 S.cur=(S.cur+1)%S.players.length;next(S)}
@@ -83,6 +92,7 @@ let q=(sd*9301+c.t*49297+c.r*7919+7)%233280;const rn=()=>(q=(q*9301+49297)%23328
 let g='<g clip-path="url(#tc)"><rect width="100" height="100" fill="url(#fg)"/>';
 for(let i=0;i<3;i++)g+=`<ellipse cx="${rn()*100}" cy="${rn()*100}" rx="${14+rn()*14}" ry="${8+rn()*8}" fill="#a9d26f" opacity=".3"/>`;
 for(let i=0;i<10;i++){const x=rn()*96+2,y=rn()*96+6;g+=`<path d="M${x} ${y}l-1.6-4M${x} ${y}v-5M${x} ${y}l1.6-4" stroke="#5a8734" stroke-width=".9" stroke-linecap="round" fill="none"/>`}
+for(let i=0;i<5;i++)g+=`<circle cx="${rn()*96+2}" cy="${rn()*96+2}" r="1.3" fill="${rn()<.5?'#fff3b0':'#ffd1e0'}"/>`;
 for(let i=0;i<2;i++){const x=rn()*76+12,y=rn()*76+12;g+=`<ellipse cx="${x+1}" cy="${y+5}" rx="7" ry="2.6" fill="#000" opacity=".16"/><circle cx="${x}" cy="${y}" r="5.5" fill="#477a2a"/><circle cx="${x-1.6}" cy="${y-1.8}" r="3.2" fill="#6aa23d"/>`}
 if(ro.length){const d=ro.length==2?(ro[1]-ro[0]==2?`M${MID[ro[0]]}L${MID[ro[1]]}`:`M${MID[ro[0]]}Q50 50 ${MID[ro[1]]}`):ro.map(i=>`M${MID[i]}L50 50`).join('');
 g+=`<path d="${d}" fill="none" stroke="#6f542c" stroke-width="19" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#ead8a8" stroke-width="13" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#c4a766" stroke-width="1" stroke-dasharray="3 4"/>`;
@@ -90,6 +100,7 @@ if(ro.length>2)g+='<circle cx="50" cy="50" r="7.5" fill="#ead8a8" stroke="#6f542
 const cn=!T.x&&ci.length>1,cs=(w,p)=>ci.map(i=>`<path d="M-10 -10H110V4Q50 62 -10 4Z" transform="${R(i)}" ${p}/>`).join('')+(cn?ci.map(i=>`<line x1="50" y1="-10" x2="50" y2="50" stroke-width="${w}" transform="${R(i)}" ${p.includes('fill="url')?'stroke="url(#brk)"':'stroke="#5b564e"'}/>`).join(''):'');
 if(ci.length){g+=cs(56,'fill="#5b564e" stroke="#5b564e" stroke-width="10" stroke-linejoin="round"')+cs(46,'fill="url(#brk)" stroke="none"');
 g+=ci.map(i=>`<path d="M-10 4Q50 62 110 4" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="1.5" transform="${R(i)} translate(0 -2.5)"/>`).join('')}
+ci.forEach(i=>{g+=`<g transform="${R(i)}"><rect x="32" y="11" width="9" height="7" fill="#efe3c6" stroke="#6b4a1e" stroke-width=".7"/><path d="M30.5 11L36.5 5.5L42.5 11Z" fill="#b8452f"/><rect x="60" y="12" width="9" height="7" fill="#efe3c6" stroke="#6b4a1e" stroke-width=".7"/><path d="M58.5 12L64.5 6.5L70.5 12Z" fill="#9c3a28"/></g>`});
 if(T.s){g+=`<g transform="${cn?'translate(50 50)':R(ci[0])+' translate(50 15)'}"><path d="M-7.5-8.5H7.5V1Q7.5 8.5 0 12Q-7.5 8.5-7.5 1Z" fill="#2c57a8" stroke="#f3e6c4" stroke-width="1.5"/><path d="M0-8.5V12M-7.5-2H7.5" stroke="#f3e6c4" stroke-width="1.5"/></g>`}
 if(T.m)g+='<ellipse cx="48" cy="72" rx="24" ry="4" fill="#000" opacity=".25"/><rect x="29" y="46" width="30" height="25" fill="#f2e8d1" stroke="#6b5a3e" stroke-width="1.2"/><path d="M25 48L44 28L63 48Z" fill="#b8452f" stroke="#6b2a1e" stroke-width="1.2"/><rect x="60" y="34" width="10" height="37" fill="#e6d9b9" stroke="#6b5a3e" stroke-width="1.2"/><path d="M58 36L65 21L72 36Z" fill="#8f3322" stroke="#6b2a1e" stroke-width="1.2"/><path d="M65 21V14M62 17H68" stroke="#5a3d22" stroke-width="1.6"/><path d="M39 71V61a5 5 0 0 1 10 0V71Z" fill="#5a3d22"/><circle cx="44" cy="40" r="2.4" fill="#f2e8d1" stroke="#6b2a1e" stroke-width=".8"/>';
 return g+'</g>'}
@@ -97,8 +108,8 @@ const meepleSVG=(x,y,col)=>`<g transform="translate(${x} ${y}) scale(1.2)"><elli
 function draw(){
 if(!S){home();return}
 if(S.status=='lobby'){lobby();return}
-const my=!online||S.players[S.cur].id==me,P=S.players[S.cur];let b='';
-for(const q in S.board){const[x,y]=q.split(',').map(Number);b+=`<g transform="translate(${x*100} ${y*100})"><rect x="2.5" y="4" width="100" height="100" rx="4" fill="#000" opacity=".35"/>${tileSVG(S.board[q],x*31+y*17)}<rect width="100" height="100" rx="3" fill="none" stroke="#2a2118" stroke-opacity=".6" stroke-width="1.5"/></g>`}
+const my=!online||S.players[S.cur].id==me,P=S.players[S.cur];let b='';const key=Object.keys(S.board).length,anim=key!=shownT;shownT=key;
+for(const q in S.board){const[x,y]=q.split(',').map(Number);b+=`<g transform="translate(${x*100} ${y*100})"><g ${anim&&S.last&&S.last.x==x&&S.last.y==y?'class="drop"':''}><rect x="2.5" y="4" width="100" height="100" rx="4" fill="#000" opacity=".35"/>${tileSVG(S.board[q],x*31+y*17)}<rect width="100" height="100" rx="3" fill="none" stroke="#2a2118" stroke-opacity=".6" stroke-width="1.5"/></g></g>`}
 if(S.last&&S.phase=='meeple')b+=`<rect x="${S.last.x*100+2}" y="${S.last.y*100+2}" width="96" height="96" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="6 4"/>`;
 S.meeples.forEach(m=>{const[a,c]=sp(m.s);b+=`<g transform="translate(${m.x*100} ${m.y*100})">${meepleSVG(a,c,S.players[m.p].color)}</g>`});
 if(my&&S.phase=='tile'&&S.tile!=null)cands(S.board).forEach(([x,y])=>{const c={t:S.tile,r:rot};if(fits(S.board,x,y,c))b+=`<g transform="translate(${x*100} ${y*100})" class="gh" data-a="put" data-x="${x}" data-y="${y}" style="cursor:pointer"><g opacity=".55">${tileSVG(c)}</g><rect width="100" height="100" fill="#fff" fill-opacity=".08" stroke="#fff" stroke-width="3"/></g>`});
@@ -106,14 +117,15 @@ if(my&&S.phase=='meeple'&&P.meeples>0){const{f,C}=build(S.board,S.meeples),L=S.l
 const opt=(i)=>{const r=f(K(L.x,L.y,i));if(seen.has(r))return;if(C.get(r).mp.length)return;seen.add(r);const[a,c]=sp(i);b+=`<g transform="translate(${L.x*100} ${L.y*100})" data-a="mp" data-s="${i}" style="cursor:pointer" opacity=".85"><circle cx="${a}" cy="${c-2}" r="11" fill="#fff" fill-opacity=".5"/>${meepleSVG(a,c,P.color)}</g>`};
 for(let i=0;i<12;i++)if(s[i]!='F'&&i%3==1)opt(i);for(let i=0;i<12;i++)if(s[i]=='F')opt(i);
 if(TL[S.board[L.x+','+L.y].t].m)seen.add('m'),b+=`<g transform="translate(${L.x*100} ${L.y*100})" data-a="mp" data-s="12" style="cursor:pointer"><circle cx="50" cy="52" r="11" fill="#fff" fill-opacity=".5"/>${meepleSVG(50,56,P.color)}</g>`}
+if(S.pv!==shownP){shownP=S.pv;(S.pops||[]).forEach((o,i)=>{b+=`<text class="pop" x="${o.x*100+50+(i%2?22:-22)}" y="${o.y*100+45}" fill="${o.c}" stroke="#000" stroke-width="4" paint-order="stroke" font-family="Cinzel" font-weight="700" font-size="38" text-anchor="middle" style="animation-delay:${i*.25}s">+${o.pts}</text>`})}
 $('#app').innerHTML=`<div id="side"><h2 style="margin:0;font-size:26px;letter-spacing:.06em;color:var(--gold)">🏰 Carcassonne</h2>${online?`<div class="cz" style="color:var(--mute)">Raum ${room}</div>`:''}
 ${S.players.map((p,i)=>`<div class="pl ${i==S.cur&&S.status!='over'?'on':''}"><span class="dot" style="background:${p.color}"></span>${p.name}<span class="sc">${p.score}</span><small style="display:flex;align-items:center"><svg width="16" height="20" viewBox="-10 -11 20 22">${meepleSVG(0,0,p.color)}</svg>×${p.meeples}</small></div>`).join('')}
-${S.status=='over'?`<h3>Spiel vorbei – ${[...S.players].sort((a,b)=>b.score-a.score)[0].name} gewinnt!</h3><button onclick="location.reload()">Neues Spiel</button>`:`
+${trk(S)}${S.status=='over'?`<h3>Spiel vorbei – ${[...S.players].sort((a,b)=>b.score-a.score)[0].name} gewinnt!</h3><button onclick="location.reload()">Neues Spiel</button>`:`
 <div>${my?'<b>Du bist dran.</b>':`${P.name} ist dran…`} Noch ${S.deck.length} Kacheln.</div>
-${S.phase=='tile'&&S.tile!=null&&my?`<svg width="110" height="110" viewBox="0 0 100 100" style="border:3px solid var(--gold);border-radius:6px;align-self:center">${tileSVG({t:S.tile,r:rot})}</svg><button onclick="rotate()">Drehen (R)</button><small>Klicke ein markiertes Feld, um die Kachel zu legen.</small>`:''}
+${S.phase=='tile'&&S.tile!=null&&my?`<svg width="110" height="110" viewBox="0 0 100 100" style="border:3px solid var(--gold);border-radius:6px;align-self:center">${tileSVG({t:S.tile,r:rot})}</svg><button onclick="rotate()">Drehen (R)</button>${tips?'<small>Klicke ein markiertes Feld, um die Kachel zu legen. Die Kanten müssen zu den Nachbarn passen.</small>':''}`:''}
 ${S.phase=='meeple'&&my?`<div>${P.meeples>0?'Meeple setzen? Klicke eine Figur auf der Kachel.':'Keine Meeple übrig.'}</div><button onclick="skip()">${P.meeples>0?'Ohne Meeple weiter':'Zug beenden'}</button>`:''}`}
-<div id="log">${S.log.slice(-12).reverse().map(l=>`<div>${l}</div>`).join('')}</div></div>
-<svg id="board" viewBox="0 0 1000 700"><rect width="1000" height="700" filter="url(#nz)" opacity=".13" style="pointer-events:none"/><g id="vp" transform="translate(${px} ${py}) scale(${zm})">${b}</g></svg>`;
+<div style="display:flex;gap:8px"><button class="g" onclick="tut(0)">? Anleitung</button><button class="g" onclick="toggleTips()">Tipps ${tips?'an':'aus'}</button></div><div id="log">${S.log.slice(-12).reverse().map(l=>`<div>${l}</div>`).join('')}</div></div>
+<svg id="board" viewBox="0 0 1000 700" style="box-shadow:inset 0 0 80px ${P.color}77"><rect width="1000" height="700" filter="url(#nz)" opacity=".13" style="pointer-events:none"/><g id="vp" transform="translate(${px} ${py}) scale(${zm})">${b}</g><rect width="1000" height="700" fill="url(#vg)" style="pointer-events:none"/></svg>${S.status=='over'?final():''}`;
 bindBoard()}
 function bindBoard(){const sv=$('#board'),vp=$('#vp');let d=null;
 sv.onpointerdown=e=>{d={x:e.clientX,y:e.clientY};moved=false};
@@ -129,9 +141,10 @@ function placeMeeple(s){const p=S.players[S.cur];p.meeples--;S.meeples.push({x:S
 function skip(){finish(S);sync()}
 function sync(){draw();if(online&&sb)sb.from('games').update({state:S}).eq('id',room).then(()=>{})}
 /* ---- Menü & Lobby ---- */
-function home(){$('#app').innerHTML=`<div class="box"><h1 style="margin:0">Carcassonne</h1><input id="nm" placeholder="Dein Name" value="${localStorage.nm||''}">
+function home(){setTimeout(test,0);$('#app').innerHTML=`<svg class="bgm" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice">${mosaic()}</svg><div class="box"><h1 class="ttl cz" style="margin:0">Carcassonne</h1><input id="nm" placeholder="Dein Name" value="${localStorage.nm||''}">
 <h3 style="margin:8px 0 0">Gemeinsam an einem Gerät</h3><div style="display:flex;gap:8px">${[2,3,4,5].map(n=>`<button class="g" onclick="local(${n})">${n} Spieler</button>`).join('')}</div>
-<h3 style="margin:8px 0 0">Online mit Freunden</h3>${sb?`<button onclick="createRoom()">Raum erstellen</button><div style="display:flex;gap:8px"><input id="cd" placeholder="Raumcode" style="text-transform:uppercase"><button onclick="joinRoom()">Beitreten</button></div>`:'<small>Trage SB_URL und SB_KEY oben in index.html ein, um Online zu spielen.</small>'}</div>`}
+<h3 style="margin:8px 0 0">Online mit Freunden</h3>${sb?`<button onclick="createRoom()">Raum erstellen</button><div style="display:flex;gap:8px"><input id="cd" placeholder="Raumcode" style="text-transform:uppercase"><button onclick="joinRoom()">Beitreten</button></div>`:'<small>Trage SB_URL und SB_KEY oben in index.html ein, um Online zu spielen.</small>'}<button class="g" onclick="tut(0)">Anleitung ansehen</button><small id="dbg" style="color:var(--mute)"></small></div>`}
+async function test(){const el=$('#dbg');if(!sb||!el)return;el.textContent='Prüfe Datenbank…';try{const r=await fetch(cleanUrl(SB_URL)+'/rest/v1/games?select=id&limit=1',{headers:{apikey:SB_KEY.trim()}});el.textContent=r.ok?'Datenbank verbunden ✓':'Datenbank-Fehler '+r.status+': '+(await r.text()).slice(0,180)}catch(e){el.textContent='Keine Verbindung: '+e.message}}
 const nm=()=>{const v=($('#nm').value||'Spieler').trim().slice(0,14);localStorage.nm=v;return v};
 function local(n){S=newGame(Array.from({length:n},(_,i)=>({id:'l'+i,name:i?'Spieler '+(i+1):nm()})));draw()}
 function sub(){ch=sb.channel('g'+room).on('postgres_changes',{event:'UPDATE',schema:'public',table:'games',filter:'id=eq.'+room},p=>{S=p.new.state;draw()}).subscribe()}
@@ -141,5 +154,21 @@ if(!S.players.find(p=>p.id==me)){if(S.status!='lobby'||S.players.length>=5)retur
 function lobby(){$('#app').innerHTML=`<div class="box"><h2 style="margin:0">Raum ${room}</h2><div>Schicke den Code an deine Freunde.</div>${S.players.map((p,i)=>`<div class="pl"><span class="dot" style="background:${COL[i]}"></span>${p.name}</div>`).join('')}
 ${S.host==me?`<button ${S.players.length<2?'disabled':''} onclick="start()">Spiel starten</button>`:'<small>Warte auf den Host…</small>'}</div>`}
 function start(){S=newGame(S.players);sync()}
-draw();
+const trk=S=>`<svg viewBox="0 0 260 36" style="width:100%" aria-label="Punkteleiste"><rect x="8" y="12" width="244" height="8" rx="4" fill="#1e170f" stroke="#6b5a3e"/>${[0,25,50,75,100].map(v=>`<text x="${10+v*2.4}" y="34" font-size="8" fill="#b9a77e" text-anchor="middle">${v}</text>`).join('')}${S.players.map((p,i)=>`<circle cx="${10+(p.score%100)*2.4}" cy="${16+(i-2)*2.2}" r="6" fill="${p.color}" stroke="#000"/>`).join('')}</svg>`;
+function final(){const r=[...S.players].sort((a,b)=>b.score-a.score);return `<div class="modal"><div class="mb"><h2 class="cz" style="margin:0">Spiel vorbei</h2>${r.map((p,i)=>`<div class="pl"><span>${['🥇','🥈','🥉','4.','5.'][i]}</span><span class="dot" style="background:${p.color}"></span>${p.name}<span class="sc">${p.score}</span></div><small style="color:var(--mute);margin:-6px 0 0 34px">${Object.entries(p.br||{}).map(([k,v])=>k+' '+v).join(', ')||'keine Wertung'}</small>`).join('')}<button onclick="location.reload()">Neues Spiel</button></div></div>`}
+function mosaic(){let g='';for(let i=0;i<8;i++)for(let j=0;j<6;j++)g+=`<g transform="translate(${i*100} ${j*100})">${tileSVG({t:(i*7+j*5+i*j)%24,r:(i+j)%4},i*13+j)}</g>`;return g}
+const TUT=[['Ziel','Sammle die meisten Punkte, indem du Städte, Straßen, Klöster und Wiesen mit Meeples besetzt.',[3,0]],
+['Kachel legen','Du ziehst eine Kachel und legst sie an. Alle Kanten müssen zu den Nachbarn passen: Stadt an Stadt, Straße an Straße, Wiese an Wiese. Mit R oder „Drehen“ drehst du sie.',[9,1]],
+['Meeple setzen','Danach darfst du einen Meeple auf ein Gebiet der neuen Kachel stellen, aber nur wenn in diesem Gebiet noch kein Meeple steht. Du hast 7 Stück.',[0,0,1]],
+['Punkte','Fertige Stadt: 2 Punkte pro Kachel und pro Wappen. Straße: 1 Punkt pro Kachel. Kloster: 9 Punkte, wenn alle 8 Nachbarn liegen. Danach bekommst du den Meeple zurück. Wer die meisten Meeples im Gebiet hat, punktet.',[12,2]],
+['Bauern und Ende','Meeples auf Wiesen bleiben bis zum Schluss liegen und bringen 3 Punkte pro angrenzender fertiger Stadt. Das Spiel endet, wenn der Stapel leer ist. Offene Gebiete geben dann je 1 Punkt pro Kachel.',[21,0]]];
+function tut(i){let el=$('#tut');if(!el){el=document.createElement('div');el.id='tut';document.body.appendChild(el)}
+if(i<0||i>=TUT.length){el.remove();return}const[t,x,d]=TUT[i];
+el.innerHTML=`<div class="modal"><div class="mb"><div style="display:flex;justify-content:space-between;align-items:center"><h2 class="cz" style="margin:0">${t}</h2><button class="g" onclick="tut(-1)" aria-label="Schließen">✕</button></div>
+<svg width="130" height="130" viewBox="0 0 100 100" style="align-self:center;border-radius:8px;filter:drop-shadow(0 6px 8px #000a)">${tileSVG({t:d[0],r:d[1]},3)}${d[2]?meepleSVG(50,58,'#e24b4b'):''}</svg><div>${x}</div>
+<div style="text-align:center;color:var(--gold)">${TUT.map((_,k)=>k==i?'●':'○').join(' ')}</div>
+<label><input type="checkbox" style="width:auto" ${tutOn?'checked':''} onchange="tutOn=this.checked;localStorage.tut=tutOn?1:0"> Anleitung beim Start zeigen</label>
+<div style="display:flex;gap:8px">${i?`<button class="g" onclick="tut(${i-1})">Zurück</button>`:''}<button onclick="tut(${i+1})" style="margin-left:auto">${i<TUT.length-1?'Weiter':"Los geht's"}</button></div></div></div>`}
+function toggleTips(){tips=!tips;localStorage.tips=tips?1:0;draw()}
+draw();if(tutOn)tut(0);
 </script></body></html>
