@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Carcassonne Online</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏰</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Lora:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#2a2118;--panel:#3a2e21;--ink:#f3e6c4;--mute:#b9a77e;--gold:#d9a441}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.5 Lora,Georgia,serif}
+h1,h2,h3,.cz{font-family:Cinzel,Georgia,serif}
+button{font:inherit;background:var(--gold);color:#2a2118;border:0;border-radius:6px;padding:.5em 1em;cursor:pointer;font-weight:600}
+button.g{background:#55452f;color:var(--ink)}button:focus-visible,input:focus-visible{outline:3px solid #fff}
+input{font:inherit;padding:.5em;border-radius:6px;border:1px solid #6b5a3e;background:#1e170f;color:var(--ink);width:100%}
+#app{display:flex;height:100%}#side{width:290px;background:var(--panel);padding:16px;overflow:auto;display:flex;flex-direction:column;gap:12px;border-right:2px solid #1e170f}
+#board{flex:1;min-width:0;background:radial-gradient(circle at 50% 40%,#4a6a34,#2f4a22);cursor:grab;touch-action:none}
+.pl{background:#2f251a;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px}.pl.on{background:#55452f;outline:2px solid var(--gold)}
+.dot{width:16px;height:16px;border-radius:50%;border:2px solid #000;flex:none}.sc{margin-left:auto;font-weight:700}
+.gh rect{animation:pu 1.4s ease-in-out infinite}@keyframes pu{50%{stroke-opacity:.25}}@media(prefers-reduced-motion:reduce){.gh rect{animation:none}}
+#log{font-size:13px;color:var(--mute);max-height:150px;overflow:auto}
+.box{max-width:420px;margin:8vh auto;padding:24px;background:var(--panel);border-radius:12px;display:flex;flex-direction:column;gap:12px}
+@media(max-width:700px){#app{flex-direction:column-reverse}#side{width:100%;max-height:40%;border:0}}
+</style></head><body><svg width="0" height="0" style="position:absolute"><defs><clipPath id="tc"><rect width="100" height="100" rx="3"/></clipPath>
+<linearGradient id="fg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#93c15e"/><stop offset="1" stop-color="#75a448"/></linearGradient>
+<pattern id="brk" width="14" height="9" patternUnits="userSpaceOnUse"><rect width="14" height="9" fill="#d8a85c"/><path d="M0 .4H14M0 4.9H14M3.5 .4V4.9M10.5 4.9V9.4" stroke="#a5722c" stroke-width=".8" opacity=".6" fill="none"/></pattern>
+<filter id="nz"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="2"/><feColorMatrix type="saturate" values="0"/></filter></defs></svg>
+<div id="app"></div>
+<script>
+/* ====== SUPABASE (für Online-Modus ausfüllen, sonst nur Hotseat) ====== */
+const SB_URL='https://mogmiaxfruhovgiarbgd.supabase.co/rest/v1/', SB_KEY='sb_publishable_lPGH5GxDIxKU9whD3FtGrA_LZx7oiXU';
+/* ====================================================================== */
+const sb=(SB_URL&&window.supabase)?supabase.createClient(SB_URL,SB_KEY):null;
+const COL=['#e24b4b','#3b82f6','#22c55e','#eab308','#a855f7'];
+// Kacheln: Anzahl, Kanten N,E,S,W (C=Stadt R=Straße F=Wiese), m=Kloster s=Wappen x=Städte getrennt
+const TL=[['2','FFRF','m'],['4','FFFF','m'],['1','CCCC','s'],['4','CRFR',''],['5','CFFF',''],['2','FCFC','s'],['1','CFCF',''],['3','CFCF','x'],['2','CCFF','x'],['3','CRRF',''],['3','CFRR',''],['3','CRRR',''],['2','CFFC','s'],['3','CFFC',''],['2','CRRC','s'],['3','CRRC',''],['1','CCFC','s'],['3','CCFC',''],['2','CCRC','s'],['1','CCRC',''],['8','RFRF',''],['9','FFRR',''],['4','FRRR',''],['1','RRRR','']]
+.map(a=>({n:+a[0],e:a[1],m:a[2].includes('m'),s:a[2].includes('s'),x:a[2].includes('x')}));
+const me=sessionStorage.cid||(sessionStorage.cid=Math.random().toString(36).slice(2));
+let S=null,room=null,online=false,rot=0,px=450,py=300,zm=1,moved=false,ch=null;
+const $=s=>document.querySelector(s),K=(x,y,s)=>x+','+y+','+s;
+const DIR=[[0,-1],[1,0],[0,1],[-1,0]];
+function slots(c){const b=[...TL[c.t].e].map(e=>e=='C'?'CCC':e=='R'?'FRF':'FFF').join('');let r='';for(let k=0;k<12;k++)r+=b[(k-3*c.r+12)%12];return r}
+function edge(c,i){return slots(c)[i*3+1]}
+function fits(B,x,y,c){for(let i=0;i<4;i++){const n=B[(x+DIR[i][0])+','+(y+DIR[i][1])];if(n&&edge(n,(i+2)%4)!=edge(c,i))return false}return true}
+function cands(B){const o=new Set();for(const k in B){const[x,y]=k.split(',').map(Number);DIR.forEach(d=>{const q=(x+d[0])+','+(y+d[1]);if(!B[q])o.add(q)})}return[...o].map(q=>q.split(',').map(Number))}
+function hasMove(B,t){return cands(B).some(([x,y])=>[0,1,2,3].some(r=>fits(B,x,y,{t,r})))}
+/* ---- Feature-Graph (Union-Find über alle 12 Kantenplätze pro Kachel) ---- */
+function build(B,M){const P=new Map(),f=k=>{while(P.get(k)!==k){P.set(k,P.get(P.get(k)));k=P.get(k)}return k},u=(a,b)=>P.set(f(a),f(b)),C=new Map();
+for(const q in B){const[x,y]=q.split(',').map(Number),c=B[q],t=TL[c.t],s=slots(c);for(let i=0;i<12;i++)P.set(K(x,y,i),K(x,y,i));
+let fc=-1,roads=[];for(let i=0;i<12;i++){if(s[i]=='C'){if(fc<0)fc=i;if(!t.x||(i%3&&s[i-1]=='C'))u(K(x,y,i),K(x,y,t.x?i-1:fc))}if(s[i]=='R')roads.push(i);if(s[i]=='F'&&s[(i+1)%12]=='F')u(K(x,y,i),K(x,y,(i+1)%12))}
+if(roads.length==2)u(K(x,y,roads[0]),K(x,y,roads[1]))}
+for(const q in B){const[x,y]=q.split(',').map(Number);
+if(B[(x+1)+','+y])for(let j=0;j<3;j++)u(K(x,y,3+j),K(x+1,y,9+2-j));
+if(B[x+','+(y+1)])for(let j=0;j<3;j++)u(K(x,y,6+j),K(x,y+1,2-j))}
+for(const q in B){const[x,y]=q.split(',').map(Number),c=B[q],s=slots(c);
+for(let i=0;i<12;i++){const r=f(K(x,y,i));let o=C.get(r);if(!o)C.set(r,o={type:s[i],tiles:new Set(),sh:new Set(),open:0,mp:[],adj:new Set()});
+o.tiles.add(q);if(TL[c.t].s&&s[i]=='C')o.sh.add(q);
+const d=DIR[Math.floor(i/3)];if(s[i]!='F'&&i%3==1&&!B[(x+d[0])+','+(y+d[1])])o.open++;if(s[i]=='C'&&i%3==1&&!B[(x+d[0])+','+(y+d[1])])o.open+=0}}
+// offene Stadtkanten: pro Seite zählen
+for(const q in B){const[x,y]=q.split(',').map(Number),c=B[q],s=slots(c);for(let i=0;i<4;i++){const d=DIR[i];if(s[i*3+1]=='C'&&!B[(x+d[0])+','+(y+d[1])])C.get(f(K(x,y,i*3+1))).open++}}
+for(const q in B){const[x,y]=q.split(',').map(Number),s=slots(B[q]);for(let i=0;i<12;i++){const n=(i+1)%12;
+if(s[i]=='F'&&s[n]=='C')C.get(f(K(x,y,i))).adj.add(f(K(x,y,n)));if(s[i]=='C'&&s[n]=='F')C.get(f(K(x,y,n))).adj.add(f(K(x,y,i)))}}
+(M||[]).forEach(m=>{if(m.s<12)C.get(f(K(m.x,m.y,m.s))).mp.push(m)});
+return{f,C}}
+function award(S,ms,pts,why){if(!ms.length||!pts)return;const n={};ms.forEach(m=>n[m.p]=(n[m.p]||0)+1);const mx=Math.max(...Object.values(n));
+Object.keys(n).filter(p=>n[p]==mx).forEach(p=>{S.players[p].score+=pts;S.log.push(`${S.players[p].name} +${pts} (${why})`)});
+S.meeples=S.meeples.filter(m=>!ms.includes(m));ms.forEach(m=>S.players[m.p].meeples++)}
+const pay=(S,c,fin)=>award(S,c.mp,c.type=='C'?(c.tiles.size+c.sh.size)*(fin?1:2):c.tiles.size,c.type=='C'?'Stadt':'Straße');
+const monN=(B,x,y)=>{let n=0;for(let a=-1;a<2;a++)for(let b=-1;b<2;b++)if(B[(x+a)+','+(y+b)])n++;return n};
+function finish(S){const{f,C}=build(S.board,S.meeples),L=S.last,t=S.board[L.x+','+L.y],s=slots(t),R=new Set();
+for(let i=0;i<12;i++)if(s[i]!='F')R.add(f(K(L.x,L.y,i)));R.forEach(r=>{const c=C.get(r);if(!c.open)pay(S,c,false)});
+for(let a=-1;a<2;a++)for(let b=-1;b<2;b++){const x=L.x+a,y=L.y+b,c=S.board[x+','+y];if(c&&TL[c.t].m&&monN(S.board,x,y)==9)award(S,S.meeples.filter(m=>m.x==x&&m.y==y&&m.s==12),9,'Kloster')}
+S.cur=(S.cur+1)%S.players.length;next(S)}
+function next(S){while(S.deck.length){const t=S.deck.pop();if(hasMove(S.board,t)){S.tile=t;S.phase='tile';rot=0;return}S.log.push('Kachel ohne Platz abgelegt')}S.tile=null;S.status='over';endScore(S)}
+function endScore(S){const{f,C}=build(S.board,S.meeples);C.forEach(c=>{if(c.type=='F'){if(c.mp.length)award(S,c.mp,[...c.adj].filter(r=>C.get(r).open==0).length*3,'Bauern')}else if(c.mp.length)award(S,c.mp,c.type=='C'?c.tiles.size+c.sh.size:c.tiles.size,c.type=='C'?'Stadt (offen)':'Straße (offen)')});
+S.meeples.filter(m=>m.s==12).forEach(m=>award(S,[m],monN(S.board,m.x,m.y),'Kloster (offen)'))}
+function newGame(pl){const d=[];TL.forEach((t,i)=>{for(let k=0;k<t.n;k++)d.push(i)});const si=d.indexOf(3);d.splice(si,1);for(let i=d.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[d[i],d[j]]=[d[j],d[i]]}
+const G={status:'play',players:pl.map((p,i)=>({...p,color:COL[i],score:0,meeples:7})),cur:0,deck:d,board:{'0,0':{t:3,r:0}},meeples:[],log:['Das Spiel beginnt!'],last:null,tile:null,phase:'tile'};next(G);return G}
+/* ---- Zeichnen ---- */
+const sp=s=>{if(s==12)return[50,50];const i=Math.floor(s/3),j=s%3;return[[17+33*j,12],[88,17+33*j],[83-33*j,88],[12,83-33*j]][i]};
+const MID=[[50,-6],[106,50],[50,106],[-6,50]];
+function tileSVG(c,sd=1){const T=TL[c.t],E=[0,1,2,3].map(i=>T.e[(i-c.r+4)%4]),ci=[],ro=[];E.forEach((e,i)=>{e=='C'&&ci.push(i);e=='R'&&ro.push(i)});
+let q=(sd*9301+c.t*49297+c.r*7919+7)%233280;const rn=()=>(q=(q*9301+49297)%233280)/233280,R=i=>`rotate(${i*90} 50 50)`;
+let g='<g clip-path="url(#tc)"><rect width="100" height="100" fill="url(#fg)"/>';
+for(let i=0;i<3;i++)g+=`<ellipse cx="${rn()*100}" cy="${rn()*100}" rx="${14+rn()*14}" ry="${8+rn()*8}" fill="#a9d26f" opacity=".3"/>`;
+for(let i=0;i<10;i++){const x=rn()*96+2,y=rn()*96+6;g+=`<path d="M${x} ${y}l-1.6-4M${x} ${y}v-5M${x} ${y}l1.6-4" stroke="#5a8734" stroke-width=".9" stroke-linecap="round" fill="none"/>`}
+for(let i=0;i<2;i++){const x=rn()*76+12,y=rn()*76+12;g+=`<ellipse cx="${x+1}" cy="${y+5}" rx="7" ry="2.6" fill="#000" opacity=".16"/><circle cx="${x}" cy="${y}" r="5.5" fill="#477a2a"/><circle cx="${x-1.6}" cy="${y-1.8}" r="3.2" fill="#6aa23d"/>`}
+if(ro.length){const d=ro.length==2?(ro[1]-ro[0]==2?`M${MID[ro[0]]}L${MID[ro[1]]}`:`M${MID[ro[0]]}Q50 50 ${MID[ro[1]]}`):ro.map(i=>`M${MID[i]}L50 50`).join('');
+g+=`<path d="${d}" fill="none" stroke="#6f542c" stroke-width="19" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#ead8a8" stroke-width="13" stroke-linecap="round"/><path d="${d}" fill="none" stroke="#c4a766" stroke-width="1" stroke-dasharray="3 4"/>`;
+if(ro.length>2)g+='<circle cx="50" cy="50" r="7.5" fill="#ead8a8" stroke="#6f542c" stroke-width="2"/>'}
+const cn=!T.x&&ci.length>1,cs=(w,p)=>ci.map(i=>`<path d="M-10 -10H110V4Q50 62 -10 4Z" transform="${R(i)}" ${p}/>`).join('')+(cn?ci.map(i=>`<line x1="50" y1="-10" x2="50" y2="50" stroke-width="${w}" transform="${R(i)}" ${p.includes('fill="url')?'stroke="url(#brk)"':'stroke="#5b564e"'}/>`).join(''):'');
+if(ci.length){g+=cs(56,'fill="#5b564e" stroke="#5b564e" stroke-width="10" stroke-linejoin="round"')+cs(46,'fill="url(#brk)" stroke="none"');
+g+=ci.map(i=>`<path d="M-10 4Q50 62 110 4" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="1.5" transform="${R(i)} translate(0 -2.5)"/>`).join('')}
+if(T.s){g+=`<g transform="${cn?'translate(50 50)':R(ci[0])+' translate(50 15)'}"><path d="M-7.5-8.5H7.5V1Q7.5 8.5 0 12Q-7.5 8.5-7.5 1Z" fill="#2c57a8" stroke="#f3e6c4" stroke-width="1.5"/><path d="M0-8.5V12M-7.5-2H7.5" stroke="#f3e6c4" stroke-width="1.5"/></g>`}
+if(T.m)g+='<ellipse cx="48" cy="72" rx="24" ry="4" fill="#000" opacity=".25"/><rect x="29" y="46" width="30" height="25" fill="#f2e8d1" stroke="#6b5a3e" stroke-width="1.2"/><path d="M25 48L44 28L63 48Z" fill="#b8452f" stroke="#6b2a1e" stroke-width="1.2"/><rect x="60" y="34" width="10" height="37" fill="#e6d9b9" stroke="#6b5a3e" stroke-width="1.2"/><path d="M58 36L65 21L72 36Z" fill="#8f3322" stroke="#6b2a1e" stroke-width="1.2"/><path d="M65 21V14M62 17H68" stroke="#5a3d22" stroke-width="1.6"/><path d="M39 71V61a5 5 0 0 1 10 0V71Z" fill="#5a3d22"/><circle cx="44" cy="40" r="2.4" fill="#f2e8d1" stroke="#6b2a1e" stroke-width=".8"/>';
+return g+'</g>'}
+const meepleSVG=(x,y,col)=>`<g transform="translate(${x} ${y}) scale(1.2)"><ellipse cx="0" cy="8.8" rx="7" ry="2" fill="#000" opacity=".3"/><circle cx="0" cy="-6" r="3.7" fill="${col}" stroke="#111" stroke-width=".9"/><path d="M-2.6-2H2.6L8 3.5L5 5.5L3 4L4.8 8.5H-4.8L-3 4L-5 5.5L-8 3.5Z" fill="${col}" stroke="#111" stroke-width=".9" stroke-linejoin="round"/><circle cx="-1.3" cy="-7.2" r="1" fill="#fff" opacity=".55"/></g>`;
+function draw(){
+if(!S){home();return}
+if(S.status=='lobby'){lobby();return}
+const my=!online||S.players[S.cur].id==me,P=S.players[S.cur];let b='';
+for(const q in S.board){const[x,y]=q.split(',').map(Number);b+=`<g transform="translate(${x*100} ${y*100})"><rect x="2.5" y="4" width="100" height="100" rx="4" fill="#000" opacity=".35"/>${tileSVG(S.board[q],x*31+y*17)}<rect width="100" height="100" rx="3" fill="none" stroke="#2a2118" stroke-opacity=".6" stroke-width="1.5"/></g>`}
+if(S.last&&S.phase=='meeple')b+=`<rect x="${S.last.x*100+2}" y="${S.last.y*100+2}" width="96" height="96" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="6 4"/>`;
+S.meeples.forEach(m=>{const[a,c]=sp(m.s);b+=`<g transform="translate(${m.x*100} ${m.y*100})">${meepleSVG(a,c,S.players[m.p].color)}</g>`});
+if(my&&S.phase=='tile'&&S.tile!=null)cands(S.board).forEach(([x,y])=>{const c={t:S.tile,r:rot};if(fits(S.board,x,y,c))b+=`<g transform="translate(${x*100} ${y*100})" class="gh" data-a="put" data-x="${x}" data-y="${y}" style="cursor:pointer"><g opacity=".55">${tileSVG(c)}</g><rect width="100" height="100" fill="#fff" fill-opacity=".08" stroke="#fff" stroke-width="3"/></g>`});
+if(my&&S.phase=='meeple'&&P.meeples>0){const{f,C}=build(S.board,S.meeples),L=S.last,s=slots(S.board[L.x+','+L.y]),seen=new Set();
+const opt=(i)=>{const r=f(K(L.x,L.y,i));if(seen.has(r))return;if(C.get(r).mp.length)return;seen.add(r);const[a,c]=sp(i);b+=`<g transform="translate(${L.x*100} ${L.y*100})" data-a="mp" data-s="${i}" style="cursor:pointer" opacity=".85"><circle cx="${a}" cy="${c-2}" r="11" fill="#fff" fill-opacity=".5"/>${meepleSVG(a,c,P.color)}</g>`};
+for(let i=0;i<12;i++)if(s[i]!='F'&&i%3==1)opt(i);for(let i=0;i<12;i++)if(s[i]=='F')opt(i);
+if(TL[S.board[L.x+','+L.y].t].m)seen.add('m'),b+=`<g transform="translate(${L.x*100} ${L.y*100})" data-a="mp" data-s="12" style="cursor:pointer"><circle cx="50" cy="52" r="11" fill="#fff" fill-opacity=".5"/>${meepleSVG(50,56,P.color)}</g>`}
+$('#app').innerHTML=`<div id="side"><h2 style="margin:0;font-size:26px;letter-spacing:.06em;color:var(--gold)">🏰 Carcassonne</h2>${online?`<div class="cz" style="color:var(--mute)">Raum ${room}</div>`:''}
+${S.players.map((p,i)=>`<div class="pl ${i==S.cur&&S.status!='over'?'on':''}"><span class="dot" style="background:${p.color}"></span>${p.name}<span class="sc">${p.score}</span><small style="display:flex;align-items:center"><svg width="16" height="20" viewBox="-10 -11 20 22">${meepleSVG(0,0,p.color)}</svg>×${p.meeples}</small></div>`).join('')}
+${S.status=='over'?`<h3>Spiel vorbei – ${[...S.players].sort((a,b)=>b.score-a.score)[0].name} gewinnt!</h3><button onclick="location.reload()">Neues Spiel</button>`:`
+<div>${my?'<b>Du bist dran.</b>':`${P.name} ist dran…`} Noch ${S.deck.length} Kacheln.</div>
+${S.phase=='tile'&&S.tile!=null&&my?`<svg width="110" height="110" viewBox="0 0 100 100" style="border:3px solid var(--gold);border-radius:6px;align-self:center">${tileSVG({t:S.tile,r:rot})}</svg><button onclick="rotate()">Drehen (R)</button><small>Klicke ein markiertes Feld, um die Kachel zu legen.</small>`:''}
+${S.phase=='meeple'&&my?`<div>${P.meeples>0?'Meeple setzen? Klicke eine Figur auf der Kachel.':'Keine Meeple übrig.'}</div><button onclick="skip()">${P.meeples>0?'Ohne Meeple weiter':'Zug beenden'}</button>`:''}`}
+<div id="log">${S.log.slice(-12).reverse().map(l=>`<div>${l}</div>`).join('')}</div></div>
+<svg id="board" viewBox="0 0 1000 700"><rect width="1000" height="700" filter="url(#nz)" opacity=".13" style="pointer-events:none"/><g id="vp" transform="translate(${px} ${py}) scale(${zm})">${b}</g></svg>`;
+bindBoard()}
+function bindBoard(){const sv=$('#board'),vp=$('#vp');let d=null;
+sv.onpointerdown=e=>{d={x:e.clientX,y:e.clientY};moved=false};
+sv.onpointermove=e=>{if(!d)return;const k=1000/sv.clientWidth;if(Math.abs(e.clientX-d.x)+Math.abs(e.clientY-d.y)>3)moved=true;px+=(e.clientX-d.x)*k;py+=(e.clientY-d.y)*k;d={x:e.clientX,y:e.clientY};vp.setAttribute('transform',`translate(${px} ${py}) scale(${zm})`)};
+sv.onpointerup=()=>d=null;
+sv.onwheel=e=>{e.preventDefault();const k=e.deltaY<0?1.12:1/1.12;zm=Math.min(2.5,Math.max(.25,zm*k));px=500-(500-px)*k;py=350-(350-py)*k;vp.setAttribute('transform',`translate(${px} ${py}) scale(${zm})`)};
+sv.onclick=e=>{if(moved)return;const el=e.target.closest('[data-a]');if(!el)return;if(el.dataset.a=='put')put(+el.dataset.x,+el.dataset.y);else placeMeeple(+el.dataset.s)}}
+/* ---- Aktionen ---- */
+function rotate(){rot=(rot+1)%4;draw()}
+document.addEventListener('keydown',e=>{if(e.key=='r'||e.key=='R')if(S&&S.phase=='tile')rotate()});
+function put(x,y){S.board[x+','+y]={t:S.tile,r:rot};S.last={x,y};S.phase='meeple';S.tile=null;if(S.players[S.cur].meeples<1)return skip();sync()}
+function placeMeeple(s){const p=S.players[S.cur];p.meeples--;S.meeples.push({x:S.last.x,y:S.last.y,s,p:S.cur});skip()}
+function skip(){finish(S);sync()}
+function sync(){draw();if(online&&sb)sb.from('games').update({state:S}).eq('id',room).then(()=>{})}
+/* ---- Menü & Lobby ---- */
+function home(){$('#app').innerHTML=`<div class="box"><h1 style="margin:0">Carcassonne</h1><input id="nm" placeholder="Dein Name" value="${localStorage.nm||''}">
+<h3 style="margin:8px 0 0">Gemeinsam an einem Gerät</h3><div style="display:flex;gap:8px">${[2,3,4,5].map(n=>`<button class="g" onclick="local(${n})">${n} Spieler</button>`).join('')}</div>
+<h3 style="margin:8px 0 0">Online mit Freunden</h3>${sb?`<button onclick="createRoom()">Raum erstellen</button><div style="display:flex;gap:8px"><input id="cd" placeholder="Raumcode" style="text-transform:uppercase"><button onclick="joinRoom()">Beitreten</button></div>`:'<small>Trage SB_URL und SB_KEY oben in index.html ein, um Online zu spielen.</small>'}</div>`}
+const nm=()=>{const v=($('#nm').value||'Spieler').trim().slice(0,14);localStorage.nm=v;return v};
+function local(n){S=newGame(Array.from({length:n},(_,i)=>({id:'l'+i,name:i?'Spieler '+(i+1):nm()})));draw()}
+function sub(){ch=sb.channel('g'+room).on('postgres_changes',{event:'UPDATE',schema:'public',table:'games',filter:'id=eq.'+room},p=>{S=p.new.state;draw()}).subscribe()}
+async function createRoom(){room=Math.random().toString(36).slice(2,6).toUpperCase();online=true;S={status:'lobby',host:me,players:[{id:me,name:nm()}]};const{error}=await sb.from('games').insert({id:room,state:S});if(error)return alert(error.message);sub();draw()}
+async function joinRoom(){room=$('#cd').value.trim().toUpperCase();const name=nm(),{data,error}=await sb.from('games').select('state').eq('id',room).single();if(error||!data)return alert('Raum nicht gefunden');online=true;S=data.state;
+if(!S.players.find(p=>p.id==me)){if(S.status!='lobby'||S.players.length>=5)return alert('Raum ist voll oder das Spiel läuft schon');S.players.push({id:me,name});await sb.from('games').update({state:S}).eq('id',room)}sub();draw()}
+function lobby(){$('#app').innerHTML=`<div class="box"><h2 style="margin:0">Raum ${room}</h2><div>Schicke den Code an deine Freunde.</div>${S.players.map((p,i)=>`<div class="pl"><span class="dot" style="background:${COL[i]}"></span>${p.name}</div>`).join('')}
+${S.host==me?`<button ${S.players.length<2?'disabled':''} onclick="start()">Spiel starten</button>`:'<small>Warte auf den Host…</small>'}</div>`}
+function start(){S=newGame(S.players);sync()}
+draw();
+</script></body></html>
